@@ -1,7 +1,8 @@
 import sys
 
 from PyQt5.QtCore import QRect
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QLineEdit
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, \
+    QLineEdit, QMessageBox
 from PyQt5.QtGui import QPainter, QColor, QFont
 
 
@@ -20,6 +21,10 @@ class Cell:
     def color(self):
         return self.__color
 
+    @color.setter
+    def color(self, value):
+        self.__color = value
+
 
 class Field:
 
@@ -31,7 +36,7 @@ class Field:
         for i in range(height):
             self.__cells.append([])
             for j in range(width):
-                self.__cells[i].append(Cell("white"))
+                self.__cells[i].append(Cell("black"))
 
     def set_new_cells(self, new_cells):
         if len(new_cells) != self.__height:
@@ -41,7 +46,13 @@ class Field:
             if len(arr) != self.__width:
                 raise Exception("Неверный формат массива")
 
-        self.__cells = new_cells
+        for i in range(len(new_cells)):
+            for j in range(len(new_cells[0])):
+                x = new_cells[i][j]
+                if x == 1:
+                    self.__cells[i][j].color = 'white'
+                else:
+                    self.__cells[i][j].color = 'black'
 
     def change_cell_color(self, i, j):
         self.__cells[i][j].change_color()
@@ -54,9 +65,8 @@ class Field:
     def height(self):
         return self.__height
 
-    @property
-    def cells(self):
-        return self.__cells.copy()
+    def get_cell_color(self, i, j):
+        return self.__cells[i][j].color
 
 
 class Game:
@@ -65,6 +75,7 @@ class Game:
 
     def __init__(self):
         self.__field = Field(self.__WIDTH, self.__HEIGHT)
+        self.__game_ended = False
 
     def trigger_cell(self, i, j):
         for k in range(-1, 2):
@@ -72,15 +83,19 @@ class Game:
                 if k == 0 or h == 0:
                     if 0 <= i + k < self.__field.height and 0 <= j + h < self.__field.width:
                         self.__field.change_cell_color(i + k, j + h)
+        self.check_end()
 
-    # def get_colors(self):
-    #     colors = []
-    #     for arr in self.field.get_cells():
-    #         colors.append([cell.get_color() for cell in arr])
-    #     return colors
+    def check_end(self):
+        win = True
+        for i in range(self.__WIDTH):
+            for j in range(self.__HEIGHT):
+                if self.get_color_of_cell(i, j) == 'white':
+                    win = False
+                    break
+        self.__game_ended = win
 
     def get_color_of_cell(self, i, j):
-        return self.__field.cells[i][j].color
+        return self.__field.get_cell_color(i, j)
 
     @property
     def width(self):
@@ -90,13 +105,21 @@ class Game:
     def height(self):
         return self.__HEIGHT
 
+    @property
+    def game_ended(self):
+        return self.__game_ended
+
+    def set_field(self, value):
+        self.__field.set_new_cells(value)
+
 
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.__game_window = None
-        self.__settings_window = None
-        self.__rules_window = None
+        self.__game_window = GameWindow()
+        self.__level_window = LevelWindow()
+        self.__settings_window = SettingsWindow()
+        self.__rules_window = RulesWindow()
 
         self.__color_off = "black"
         self.__color_on = "white"
@@ -117,6 +140,10 @@ class MainWindow(QWidget):
         play_button.setFixedWidth(200)
         play_button.clicked.connect(self.play_clicked)
 
+        level_button = QPushButton('Выбрать уровень', self)
+        level_button.setFixedWidth(200)
+        level_button.clicked.connect(self.level_clicked)
+
         settings_button = QPushButton('Настройки', self)
         settings_button.setFixedWidth(200)
         settings_button.clicked.connect(self.settings_clicked)
@@ -128,6 +155,7 @@ class MainWindow(QWidget):
         layout = QVBoxLayout()
         layout.addWidget(name_label)
         layout.addWidget(play_button)
+        layout.addWidget(level_button)
         layout.addWidget(settings_button)
         layout.addWidget(rules_button)
         self.setLayout(layout)
@@ -136,22 +164,39 @@ class MainWindow(QWidget):
         self.setFixedSize(225, 200)
 
     def play_clicked(self):
-        self.__game_window = GameWindow(self.__color_off, self.__color_on, int(self.__width), int(self.__height))
-        self.__game_window.show()
-
-    def settings_clicked(self):
-        self.__settings_window = SettingsWindow()
-        self.__settings_window.show()
-
         tpl = self.__settings_window.get_info()
         if tpl is not None:
-            self.__color_off = tpl[0]
-            self.__color_on = tpl[1]
-            self.__width = tpl[2]
-            self.__height = tpl[3]
+            if tpl[0] != "":
+                self.__game_window.color_off = tpl[0]
+            if tpl[1] != "":
+                self.__game_window.color_on = tpl[1]
+            if tpl[2] != "":
+                self.__game_window.width = int(tpl[2])
+            if tpl[3] != "":
+                self.__game_window.height = int(tpl[3])
+
+        lvl = self.__level_window.get_level()
+        if lvl is None:
+            self.show_no_lvl_err_msg()
+        else:
+            self.__game_window.set_lvl(lvl)
+            self.__game_window.init_ui()
+            self.__game_window.show()
+
+    @staticmethod
+    def show_no_lvl_err_msg():
+        msg = QMessageBox()
+        msg.setWindowTitle("Ошибка")
+        msg.setText("Выберите уровень!")
+        msg.exec_()
+
+    def level_clicked(self):
+        self.__level_window.show()
+
+    def settings_clicked(self):
+        self.__settings_window.show()
 
     def rules_clicked(self):
-        self.__rules_window = RulesWindow()
         self.__rules_window.show()
 
 
@@ -171,16 +216,38 @@ class GameWindow(QWidget):
     def init_ui(self):
         self.setFixedWidth(self.__width)
         self.setFixedHeight(self.__height)
+        self.setWindowTitle("Выключить свет!")
 
     def paintEvent(self, event):
         painter = QPainter()
         painter.begin(self)
+        self.draw_cells(painter)
+        painter.end()
+
+    def mousePressEvent(self, event):
+        x = event.x()
+        y = event.y()
+        i = int(y / self.__height // 0.2)
+        j = int(x / self.__width // 0.2)
+        self.__game.trigger_cell(i, j)
+        self.update()
+        if self.__game.game_ended:
+            self.show_win_message()
+            self.close()
+
+    @staticmethod
+    def show_win_message():
+        msg = QMessageBox()
+        msg.setWindowTitle("Ура!")
+        msg.setText("Ура победа!!!!")
+        msg.exec_()
+
+    def draw_cells(self, painter):
         painter.setPen(QColor('green'))
 
         cell_width = int(self.__width / self.__game.width)
         cell_height = int(self.__height / self.__game.height)
 
-        self.__game.trigger_cell(0, 0)
         for i in range(self.__game.height):
             for j in range(self.__game.width):
                 if self.__game.get_color_of_cell(i, j) == 'white':
@@ -189,16 +256,103 @@ class GameWindow(QWidget):
                     color = self.__color_off
 
                 painter.fillRect(cell_width * j, cell_height * i, cell_width, cell_height, QColor(color))
-                painter.fillRect(0, 0, 10, 10, QColor('black'))
                 painter.drawRect(cell_width * j, cell_height * i, cell_width, cell_height)
 
+    @property
+    def color_off(self):
+        return self.__color_off
 
-        painter.end()
+    @color_off.setter
+    def color_off(self, value):
+        self.__color_off = value
+
+    @property
+    def color_on(self):
+        return self.__color_on
+
+    @color_on.setter
+    def color_on(self, value):
+        self.__color_on = value
+
+    @property
+    def width(self):
+        return self.__width
+
+    @width.setter
+    def width(self, value):
+        self.__width = value
+
+    @property
+    def height(self):
+        return self.__height
+
+    @height.setter
+    def height(self, value):
+        self.__height = value
+
+    def set_lvl(self, value):
+        self.__game.set_field(value)
+
+
+class LevelWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.__lvl = None
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout()
+
+        lvl_1_button = QPushButton("Уровень 1")
+        lvl_1_button.clicked.connect(self.lvl_1_clicked)
+        layout.addWidget(lvl_1_button)
+
+        lvl_2_button = QPushButton("Уровень 2")
+        lvl_2_button.clicked.connect(self.lvl_2_clicked)
+        layout.addWidget(lvl_2_button)
+
+        lvl_3_button = QPushButton("Уровень 3")
+        lvl_3_button.clicked.connect(self.lvl_3_clicked)
+        layout.addWidget(lvl_3_button)
+
+        self.setLayout(layout)
+
+        self.setGeometry(100, 100, 200, 150)
+        self.setWindowTitle("Уровни")
+
+    def lvl_1_clicked(self):
+        with open('level_01.txt', 'r') as f:
+            temp = f.readlines()
+
+        self.__lvl = [[int(x) for x in line.split()] for line in temp]
+        self.close()
+
+    def lvl_2_clicked(self):
+        with open('level_02.txt', 'r') as f:
+            temp = f.readlines()
+
+        self.__lvl = [[int(x) for x in line.split()] for line in temp]
+        self.close()
+
+    def lvl_3_clicked(self):
+        with open('level_03.txt', 'r') as f:
+            temp = f.readlines()
+
+        self.__lvl = [[int(x) for x in line.split()] for line in temp]
+        self.close()
+
+    def get_level(self):
+        return self.__lvl
 
 
 class SettingsWindow(QWidget):
     def __init__(self):
         super().__init__()
+
+        self.__input_color_off = QLineEdit(self)
+        self.__input_color_on = QLineEdit(self)
+        self.__input_width = QLineEdit(self)
+        self.__input_height = QLineEdit(self)
 
         self.__color_off = ""
         self.__color_on = ""
@@ -233,10 +387,10 @@ class SettingsWindow(QWidget):
 
         vertical_layout_2 = QVBoxLayout(self)
 
-        self.__input_color_off = QLineEdit(self)
-        self.__input_color_on = QLineEdit(self)
-        self.__input_width = QLineEdit(self)
-        self.__input_height = QLineEdit(self)
+        self.__input_color_off.setText(self.__color_off)
+        self.__input_color_on.setText(self.__color_on)
+        self.__input_width.setText(self.__width)
+        self.__input_height.setText(self.__height)
 
         vertical_layout_2.addWidget(self.__input_color_off)
         vertical_layout_2.addWidget(self.__input_color_on)
@@ -256,6 +410,7 @@ class SettingsWindow(QWidget):
         self.__width = self.__input_width.text()
         self.__height = self.__input_height.text()
         self.__button_pressed = True
+        self.close()
 
     def get_info(self):
         if self.__button_pressed:
